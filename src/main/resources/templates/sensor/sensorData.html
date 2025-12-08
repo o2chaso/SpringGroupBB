@@ -363,12 +363,14 @@
         <button id="btnSearch" class="btn btn-primary btn-sm">조회</button>
         <button onclick="resetZoom()" class="btn btn-primary btn-sm">Graph Reset</button>
         <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+        <a href="/sensor/sensorList" class="btn btn-secondary btn-sm mt-1 mb-3">대시보드</a>
         <div class="mt-3">
-          <a href="/sensor/sensorList" class="btn btn-secondary btn-sm mt-1 mb-3">대시보드</a>
           <input type="button" value="인쇄" onclick="printPage()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
-          <input type="button" value="다운로드1" onclick="download()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
-          <input type="button" value="다운로드2" onclick="selectDownload()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
-          <input type="button" value="다운로드3" onclick="allDownload()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
+          <input type="button" value="층 전체 다운로드" onclick="download()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
+        </div>
+        <div class="mt-3">
+          <input type="button" value="선택 다운로드" onclick="selectDownload()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
+          <input type="button" value="미구현(전체 데이터)" onclick="allDownload()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
         </div>
       </div>
 
