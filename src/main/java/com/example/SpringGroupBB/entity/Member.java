@@ -46,14 +46,20 @@ public class Member {
 
   private LocalDate birthday;
 
+  private String profileImage;
+
   @CreatedDate
   private LocalDateTime wDate;
+
+
 
   @Enumerated(EnumType.STRING)
   private Role role;
 
   @Enumerated(EnumType.STRING)
   private UserDel userDel;
+
+  private LocalDateTime delDate;
 
   public static Member dtoToEntity(MemberDTO dto, PasswordEncoder passwordEncoder) {
     return Member.builder()
@@ -63,6 +69,7 @@ public class Member {
             .tel(dto.getTel())
             .address(dto.getAddress())
             .birthday(dto.getBirthday())
+            .profileImage("noImage.jpg")
             .wDate(dto.getWDate())
             .role(Role.USER)
             .userDel(UserDel.NO)

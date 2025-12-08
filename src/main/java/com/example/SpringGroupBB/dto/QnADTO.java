@@ -8,6 +8,8 @@ import lombok.*;
 import org.hibernate.validator.constraints.Length;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -46,4 +48,12 @@ public class QnADTO {
             .lastDate(qna.getLastDate())
             .build();
   }
+  public static List<QnADTO> entityListToDTOList(List<QnA> qnaList) {
+    List<QnADTO> qnaDTOList = new ArrayList<>();
+    for(QnA qna : qnaList) {
+      qnaDTOList.add(entityToDTO(qna));
+    }
+    return qnaDTOList;
+  }
+
 }

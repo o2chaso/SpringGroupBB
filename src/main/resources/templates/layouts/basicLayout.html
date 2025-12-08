@@ -12,6 +12,28 @@
     .fieldError {
       color: red !important;
     }
+    @media print {
+      @page {
+        size: 21cm, 29.7cm;
+        margin: 12mm;
+      }
+      * {
+        print-color-adjust: exact !important;
+        -webkit-print-color-adjust: exact !important;
+      }
+      #nav {
+        display: none !important;
+      }
+      #footer {
+        display: none !important;
+      }
+      #header {
+        display: none !important;
+      }
+      .row {
+        display: none !important;
+      }
+    }
   </style>
   <script th:inline="javascript">
     $(function() {
@@ -29,6 +51,7 @@
         xhr.setRequestHeader(header, token);
       });
     });
+
   </script>
   <!-- js파일, css파일을 처리하는 영역 -->
   <th:block layout:fragment="script">

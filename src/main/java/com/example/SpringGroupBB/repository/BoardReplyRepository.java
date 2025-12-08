@@ -12,4 +12,6 @@ public interface BoardReplyRepository extends JpaRepository<BoardReply, Long>, Q
   List<BoardReply> findByBoardIdOrderById(Long boardId);
 
   Optional<BoardReply> findByBoardId(Long id);
+
+  int countByMemberEmail(String email);
 }

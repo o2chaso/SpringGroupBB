@@ -2,6 +2,7 @@ package com.example.SpringGroupBB.controller;
 
 import com.example.SpringGroupBB.common.EventStateHolder;
 import com.example.SpringGroupBB.dto.EventLogDTO;
+import com.example.SpringGroupBB.dto.ReportSaveDTO;
 import com.example.SpringGroupBB.dto.SensorDTO;
 import com.example.SpringGroupBB.dto.ThresholdDTO;
 import com.example.SpringGroupBB.entity.EventLog;
@@ -9,14 +10,15 @@ import com.example.SpringGroupBB.entity.SensorEntity;
 import com.example.SpringGroupBB.entity.ThresholdEntity;
 import com.example.SpringGroupBB.repository.EventLogRepository;
 import com.example.SpringGroupBB.repository.SensorRepository;
-import com.example.SpringGroupBB.service.EventLogService;
-import com.example.SpringGroupBB.service.SensorService;
-import com.example.SpringGroupBB.service.ThresholdService;
-import com.example.SpringGroupBB.service.WeatherService;
+import com.example.SpringGroupBB.service.*;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +27,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -42,6 +45,7 @@ public class SensorController {
   private final SensorRepository sensorRepository;
   private final EventLogRepository eventLogRepository;
   private final WeatherService weatherService;
+  private final ReportService reportService;
 
   // Sensor Detailed Data
   @GetMapping("/sensorData")
@@ -68,6 +72,7 @@ public class SensorController {
   @GetMapping("/sensorList")
   public String sensorListGet(Model model) {
     model.addAttribute("userCsrf", true);
+    model.addAttribute("toDay", LocalDate.now().toString());
     return "sensor/sensorList";
   }
   // 팝업창
@@ -98,6 +103,16 @@ public class SensorController {
       case "interlock" -> {
         // DB 조회
         Optional<ThresholdEntity> dto = thresholdService.findThreshold(deviceCode, sensorKey);
+        String[] sensor1 = {"value1", "value2", "value3", "value4", "value5", "value6", "value7"};
+        String[] sensor2 = {"value8", "value9", "value10"};
+        String[] sensor3 = {"value11"};
+        String[] sensor4 = {"value12"};
+        String[] sensor5 = {"value13"};
+        if(Arrays.asList(sensor1).contains(sensorKey)) model.addAttribute("sensor1", sensor1);
+        if(Arrays.asList(sensor2).contains(sensorKey)) model.addAttribute("sensor2", sensor2);
+        if(Arrays.asList(sensor3).contains(sensorKey)) model.addAttribute("sensor3", sensor3);
+        if(Arrays.asList(sensor4).contains(sensorKey)) model.addAttribute("sensor4", sensor4);
+        if(Arrays.asList(sensor5).contains(sensorKey)) model.addAttribute("sensor5", sensor5);
         model.addAttribute("threshold", dto);
         return "sensor/interlock :: content";
       }
@@ -124,14 +139,26 @@ public class SensorController {
   // 알람 로그
   @ResponseBody
   @GetMapping("/eventLog/list")
-  public List<EventLogDTO> eventLogListGet(@RequestParam("deviceCode") String deviceCode,
-                                           @RequestParam("sensorKey") String sensorKey) {
-    List<EventLog> list = eventLogRepository.findTop20ByDeviceCodeAndSensorKeyOrderByMeasureDatetimeDesc(deviceCode, sensorKey);
-    List<EventLogDTO> result = new ArrayList<>();
-    for(EventLog log : list) {
-      result.add(EventLogDTO.entityToDto(log));
+  public Map<String, Object> eventLogListGet(@RequestParam("deviceCode") String deviceCode,
+                                             @RequestParam("sensorKey") String sensorKey,
+                                             @RequestParam("page") int page,
+                                             @RequestParam("size") int size) {
+
+    PageRequest pageable = PageRequest.of(page, size, Sort.by("measureDatetime").descending());
+
+    Page<EventLog> resultPage =
+            eventLogRepository.findByDeviceCodeAndSensorKey(deviceCode, sensorKey, pageable);
+
+    List<EventLogDTO> dtoList = new ArrayList<>();
+    for(EventLog log : resultPage.getContent()) {
+      dtoList.add(EventLogDTO.entityToDto(log));
     }
-    return result;
+
+    Map<String, Object> map = new HashMap<>();
+    map.put("data", dtoList);
+    map.put("totalCount", resultPage.getTotalElements());
+
+    return map;
   }
   // 센서명 매핑
   private String getSensorName(String sensorKey) {
@@ -199,6 +226,8 @@ public class SensorController {
         alive[0] = false;
       }
     });
+    
+    // SSE 연결
     new Thread(() -> {
       try {
         while (alive[0]) {
@@ -228,11 +257,21 @@ public class SensorController {
                     .filter(t -> t.getDeviceCode().equals(deviceCode) && t.getSensorKey().equals(sensorKey))
                     .findFirst()
                     .orElse(null);
+
               // 현재 상테 계산
-              String currentState = eventLogService.checkSensorState(value, th);
               // 이전 상태 가져오기
               String key = deviceCode + "_" + sensorKey;
               String prevState = eventStateHolder.getLastState(key);
+              String currentState = eventLogService.checkSensorState(value, th);
+              // interlock table의 status가 0이면 off 처리(log 안찍힘, 프론트에서 off 표시)
+              if(th != null && th.getStatus() == 0) {
+                // off로 바뀐 순간 한번만 log 기록
+                if(prevState == null || !prevState.equals("OFF")) {
+                  eventLogService.saveEventLog(deviceCode, sensorKey, value, "OFF");
+                  eventStateHolder.setLastState(key, "OFF");
+                }
+                continue;
+              }
               // 처음이거나, 상태가 변경된 경우에만 저장
               if(prevState == null || !prevState.equals(currentState)) {
                 eventLogService.saveEventLog(deviceCode, sensorKey, value, currentState);
@@ -325,4 +364,246 @@ public class SensorController {
     return weatherService.getWeatherReport(tmfc, tmef, vars);
   }
   // 날씨API 끝
+
+  // 일일 리포트 시작
+  @GetMapping("/dailyReport")
+  public String dailyReportGet(Model model,
+                               @RequestParam(name = "deviceCode", defaultValue = "ENV_V2_1", required = false)String deviceCode,
+                               @RequestParam(name = "measureDatetime", defaultValue = "", required = false)String measureDatetime,
+                               @RequestParam(name = "flag", defaultValue = "0", required = false)int flag,
+                               @RequestParam(name = "id", defaultValue = "0", required = false)Long id) {
+    // 입력 받은 날짜 없으면 오늘.
+    measureDatetime = measureDatetime.equals("")?LocalDate.now().toString():measureDatetime;
+    // DB에 지정값이 없기 때문에 배열로 만들어서 html로 보내준다.
+    String[] value = {"실내온도", "상대습도", "이산화탄소", "유기화합물VOC", "미세먼지", "초미세먼지", "온도_1", "온도_2", "온도_3", "온도(비접촉)"};
+
+    // 레포트 리스트에서 저장된 레포트 열람할 때.
+    if(id != 0) {
+      ReportSaveDTO report = reportService.selectReportID(id);
+      int reportFlag = report.getReport().equals("일일")?0:report.getReport().equals("주간")?1:report.getReport().equals("월간")?2:-1;
+      if(flag == reportFlag) {
+        model.addAttribute("report", report);
+        model.addAttribute("deviceCode", report.getDeviceCode());
+        model.addAttribute("measureDatetime", report.getSaveReportDate().toString().substring(0, 10));
+        model.addAttribute("measureDatetimePast", report.getSaveReportRestDate().toString().substring(0, 10));
+        model.addAttribute("flag", reportFlag);
+        model.addAttribute("id", id);
+        model.addAttribute("value", value);
+        model.addAttribute("device", deviceCode.equals("ENV_V2_1")?"1층":deviceCode.equals("ENV_V2_2")?"2층":deviceCode.equals("ENV_V2_3")?"자재실":"연구실");
+        return "sensor/dailyReport";
+      }
+      else if(reportFlag != -1) {
+        try {
+          report = reportService.selectReportSaveDateDeviceCodeFlag(measureDatetime, deviceCode, flag);
+          if(report != null) {
+            model.addAttribute("report", report);
+            model.addAttribute("deviceCode", report.getDeviceCode());
+            model.addAttribute("measureDatetime", report.getSaveReportDate().toString().substring(0, 10));
+            model.addAttribute("measureDatetimePast", report.getSaveReportRestDate().toString().substring(0, 10));
+            model.addAttribute("flag", reportFlag);
+            model.addAttribute("id", id);
+            model.addAttribute("value", value);
+            model.addAttribute("device", deviceCode.equals("ENV_V2_1")?"1층":deviceCode.equals("ENV_V2_2")?"2층":deviceCode.equals("ENV_V2_3")?"자재실":"연구실");
+            return "sensor/dailyReport";
+          }
+        } catch (Exception e) {}
+      }
+    }
+
+    String restDay = "";
+    // 원하는 레포트 주기에 따른 이전날 설정.
+    if(flag == 0) restDay = LocalDate.parse(measureDatetime).minusDays(1).toString();
+    else if(flag == 1) restDay = LocalDate.parse(measureDatetime).minusDays(7).toString();
+    else restDay =LocalDate.parse(measureDatetime).minusMonths(1).toString();
+    // 저장된 레포트가 없으면 생성.
+    if(reportService.selectReportDate(measureDatetime, restDay, deviceCode) == null) {
+      // sensor의 min, avg, max값 검색.
+      List<SensorDTO> sensorList = sensorService.selectSensorValueAndDate(measureDatetime, deviceCode, flag);
+      List<SensorDTO> restSensorList = new ArrayList<>();
+      // 수치 비교용 이전날 수치.
+      restSensorList = sensorService.selectSensorValueAndDate(restDay, deviceCode, flag);
+      System.out.println("sensorList.size: " + sensorList.size());
+      System.out.println("restSensorList.size: " + restSensorList.size());
+      // 수치비교.
+      for (int i = 0; i < sensorList.size(); i++) {
+        if (restSensorList.isEmpty()) {
+          sensorList.get(i).setMinRate(0.0);
+          sensorList.get(i).setAvgRate(0.0);
+          sensorList.get(i).setMaxRate(0.0);
+          sensorList.get(i).setEventRate(0);
+          continue;
+        }
+        sensorList.get(i).setMinRate(Double.parseDouble(String.format("%.2f", (sensorList.get(i).getMinData() - restSensorList.get(i).getMinData()) / sensorList.size())));
+        sensorList.get(i).setAvgRate(Double.parseDouble(String.format("%.2f", (sensorList.get(i).getAvgData() - restSensorList.get(i).getAvgData()) / sensorList.size())));
+        sensorList.get(i).setMaxRate(Double.parseDouble(String.format("%.2f", (sensorList.get(i).getMaxData() - restSensorList.get(i).getMaxData()) / sensorList.size())));
+        sensorList.get(i).setEventRate(sensorList.get(i).getEventData() - restSensorList.get(i).getEventData());
+      }
+
+      // 레포트 저장.
+      try {
+        reportService.insertReportSave(sensorList,
+                LocalDateTime.parse(measureDatetime+"T00:00:00"), LocalDateTime.parse(restDay+"T00:00:00"),
+                deviceCode, flag);
+      } catch (Exception e) {}
+
+      // DB검색결과.
+      model.addAttribute("sensorList", sensorList);
+      // 날짜.
+      model.addAttribute("measureDatetime", measureDatetime);
+      if(flag == 0) model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetime).minusDays(1).toString());
+      else if(flag == 1) model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetime).minusDays(7).toString());
+      else if(flag == 2) model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetime).minusMonths(1).toString());
+      // 센서의 역할.
+      model.addAttribute("value", value);
+      // 찾아온 지역(1층, 2층...).
+      model.addAttribute("deviceCode", deviceCode);
+      // 일일, 주간, 월간.
+      model.addAttribute("flag", flag);
+      model.addAttribute("device", deviceCode.equals("ENV_V2_1")?"1층":deviceCode.equals("ENV_V2_2")?"2층":deviceCode.equals("ENV_V2_3")?"자재실":"연구실");
+      return "sensor/dailyReport";
+    }
+    else {
+      model.addAttribute("reportSaveList", reportService.selectAllReportList());
+      model.addAttribute("userCsrf", true);
+      return "sensor/reportList";
+    }
+  }
+
+  // 리포트 생성.
+  @GetMapping("/reportSave")
+  public String reportSaveGet(Model model) {
+    model.addAttribute("measureDatetime", LocalDate.now());
+    model.addAttribute("measureDatetimePast", LocalDate.now().minusDays(1));
+    return "sensor/reportSave";
+  }
+
+  // 저장된 리포트 목록.
+  @GetMapping("/reportList")
+  public String reportListGet(Model model) {
+    model.addAttribute("reportSaveList", reportService.selectAllReportList());
+    model.addAttribute("userCsrf", true);
+    return "sensor/reportList";
+  }
+  // 리포트 삭제.
+  @ResponseBody
+  @PostMapping("/reportDelete")
+  public int reportDeletePost(Long id) {
+    try {
+      reportService.deleteReportID(id);
+      return 1;
+    } catch (Exception e) {return -1;}
+  }
+
+  // 이전 리포트와 비교.
+  @GetMapping("/reportNewWindow/{flag}/{measureDatetime}/{measureDatetimePast}/{deviceCode}")
+  public String reportNewWindwGet(Model model,
+                                  @PathVariable int flag,
+                                  @PathVariable String measureDatetime,
+                                  @PathVariable String measureDatetimePast,
+                                  @PathVariable String deviceCode){
+    String[] value = {"실내온도", "상대습도", "이산화탄소", "유기화합물VOC", "미세먼지", "초미세먼지", "온도_1", "온도_2", "온도_3", "온도(비접촉)"};
+
+    ReportSaveDTO report = reportService.selectReportSaveDateDeviceCodeFlag(measureDatetime, deviceCode, flag);
+    ReportSaveDTO restReport = reportService.selectReportSaveDateDeviceCodeFlag(measureDatetimePast, deviceCode, flag);
+    if(restReport == null) {
+      List<SensorDTO> restSensorList = sensorService.selectSensorValueAndDate(measureDatetimePast, deviceCode, flag);
+      if(restSensorList.size() != 0) {
+        LocalDateTime setDatetime = LocalDateTime.parse(measureDatetimePast+"T00:00:00");
+        LocalDateTime setRestDatetime;
+        if(flag == 0) setRestDatetime = setDatetime.minusDays(1);
+        else if(flag == 1) setRestDatetime = setDatetime.minusDays(7);
+        else setRestDatetime = setDatetime.minusMonths(1);
+
+        // 수치 비교용 이전날 수치.
+        List<SensorDTO> pastSensorList = sensorService.selectSensorValueAndDate(setRestDatetime.toString().substring(0,10), deviceCode, flag);
+        // 수치비교.
+        for (int i = 0; i < restSensorList.size(); i++) {
+          if (pastSensorList.isEmpty()) {
+            restSensorList.get(i).setMinRate(0.0);
+            restSensorList.get(i).setAvgRate(0.0);
+            restSensorList.get(i).setMaxRate(0.0);
+            restSensorList.get(i).setEventRate(0);
+            continue;
+          }
+          restSensorList.get(i).setMinRate(Double.parseDouble(String.format("%.2f", (restSensorList.get(i).getMinData() - pastSensorList.get(i).getMinData()) / restSensorList.size())));
+          restSensorList.get(i).setAvgRate(Double.parseDouble(String.format("%.2f", (restSensorList.get(i).getAvgData() - pastSensorList.get(i).getAvgData()) / restSensorList.size())));
+          restSensorList.get(i).setMaxRate(Double.parseDouble(String.format("%.2f", (restSensorList.get(i).getMaxData() - pastSensorList.get(i).getMaxData()) / restSensorList.size())));
+          restSensorList.get(i).setEventRate(restSensorList.get(i).getEventData() - pastSensorList.get(i).getEventData());
+        }
+
+        reportService.insertReportSave(restSensorList, setDatetime, setRestDatetime, deviceCode, flag);
+      }
+
+      model.addAttribute("report", report);
+      if(restReport != null) model.addAttribute("restReport", restReport);
+      else model.addAttribute("restSensorList", restSensorList);
+      model.addAttribute("value", value);
+      model.addAttribute("measureDatetime", measureDatetime);
+      model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetime).minusDays(1).toString());
+      if (flag == 1) {
+        model.addAttribute("measureDatetime", LocalDate.parse(measureDatetime).minusDays(7) + "~" + measureDatetime);
+        model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetimePast).minusDays(7) + "~" + measureDatetimePast);
+      } else if (flag == 2) {
+        model.addAttribute("measureDatetime", LocalDate.parse(measureDatetime).minusMonths(1) + "~" + measureDatetime);
+        model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetimePast).minusMonths(1) + "~" + measureDatetimePast);
+      }
+      return "sensor/reportNewWindow";
+    }
+    else {
+      model.addAttribute("report", report);
+      model.addAttribute("restReport", restReport);
+      model.addAttribute("value", value);
+      model.addAttribute("measureDatetime", measureDatetime);
+      model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetime).minusDays(1).toString());
+      if (flag == 1) {
+        model.addAttribute("measureDatetime", LocalDate.parse(measureDatetime).minusDays(7) + "~" + measureDatetime);
+        model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetimePast).minusDays(7) + "~" + measureDatetimePast);
+      } else if (flag == 2) {
+        model.addAttribute("measureDatetime", LocalDate.parse(measureDatetime).minusMonths(1) + "~" + measureDatetime);
+        model.addAttribute("measureDatetimePast", LocalDate.parse(measureDatetimePast).minusMonths(1) + "~" + measureDatetimePast);
+      }
+      return "sensor/reportNewWindow";
+    }
+  }
+  // 일일 리포트 끝
+
+  // 센서현황 시작
+  @GetMapping("/sensorLayout")
+  public String sensorLayoutGet(Model model, HttpSession session,
+                                @RequestParam(name = "deviceCode", defaultValue = "ENV_V2_1", required = false)String deviceCode) {
+    // 음소거 버튼 현황.
+    if(session.getAttribute("sAdminBeepSoundSW") == null) session.setAttribute("sAdminBeepSoundSW", true);
+    // 장소.
+    model.addAttribute("deviceCode", deviceCode);
+    // popover el확인용.
+    model.addAttribute("toDay", LocalDate.now());
+    return "sensor/sensorLayout";
+  }
+  // 음소거(true), 활성화(false) 버튼으로 세션정보 변경.
+  @ResponseBody
+  @PostMapping("/sensorLayout")
+  public void sensorLayoutPost(HttpSession session, boolean adminBeepSoundSW) {
+    session.setAttribute("sAdminBeepSoundSW", adminBeepSoundSW);
+  }
+  @GetMapping("/sensorNewWindow/{sensorId}/{deviceCode}")
+  public String sensorNewWindowGet(@PathVariable String sensorId,
+                                   @PathVariable String deviceCode,
+                                   @RequestParam String contents,
+                                   Model model) {
+    String[] value1 = {"sensor1", "sensor2", "sensor3", "sensor4", "sensor5", "sensor6", "sensor7"};
+    String[] value2 = {"sensor8", "sensor9", "sensor10"};
+    String[] value3 = {"sensor11"};
+    String[] value4 = {"sensor12"};
+    String[] value5 = {"sensor13"};
+    if(Arrays.asList(value1).contains(sensorId)) model.addAttribute("value1", value1);
+    if(Arrays.asList(value2).contains(sensorId)) model.addAttribute("value2", value2);
+    if(Arrays.asList(value3).contains(sensorId)) model.addAttribute("value3", value3);
+    if(Arrays.asList(value4).contains(sensorId)) model.addAttribute("value4", value4);
+    if(Arrays.asList(value5).contains(sensorId)) model.addAttribute("value5", value5);
+
+    model.addAttribute("contents", contents);
+    model.addAttribute("sensorId", sensorId);
+    return "sensor/sensorNewWindow";
+  }
+  // 센서현황 끝
 }

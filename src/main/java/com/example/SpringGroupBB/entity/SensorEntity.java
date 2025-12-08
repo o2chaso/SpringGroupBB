@@ -75,10 +75,20 @@ public class SensorEntity {
   @Column(name = "measure_datetime")
   private LocalDateTime measureDatetime;
 
+  // 일일 리포트 시작
+  @Transient
+  private double minData;
+  @Transient
+  private double avgData;
+  @Transient
+  private double maxData;
+  // 일일 리포트 끝
+
   // 연관관계 설정(한 회사는 여러가지의 센서를 가질 수 있다.)
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "company_id", nullable = false, insertable = false, updatable = false)
   @JsonIgnore
+  @ToString.Exclude
   private CompanyEntity company;
 
 

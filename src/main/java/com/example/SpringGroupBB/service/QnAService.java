@@ -84,4 +84,8 @@ public class QnAService {
   public void deleteQnA(Long id) {
     qnaRepository.deleteByParentId(id);
   }
+
+  public List<QnADTO> selectSearchStr(String email, String searchStr) {
+    return QnADTO.entityListToDTOList(qnaRepository.selectSearch(email, searchStr));
+  }
 }

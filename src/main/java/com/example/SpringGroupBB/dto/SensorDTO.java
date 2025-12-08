@@ -6,6 +6,8 @@ import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -38,8 +40,27 @@ public class SensorDTO {
 
   private LocalDateTime measureDatetime;
 
+  // 일일 리포트 시작
+  private double minData;
+  private double avgData;
+  private double maxData;
+  private int eventData;
+
+  private Double minRate;
+  private Double avgRate;
+  private Double maxRate;
+  private int eventRate;
+
+  public SensorDTO(double minData, double avgData, double maxData, int eventData) {
+    this.minData = minData;
+    this.avgData = avgData;
+    this.maxData = maxData;
+    this.eventData = eventData;
+  }
+  // 일일 리포트 끝
+
   // Entity To DTO
-  public static SensorDTO EntityToDTO(SensorEntity entity) {
+  public static SensorDTO entityToDTO(SensorEntity entity) {
     return SensorDTO.builder()
             .Id(entity.getId())
             .companyId(entity.getCompanyId())
@@ -58,7 +79,18 @@ public class SensorDTO {
             .value12(entity.getValue12())
             .value13(entity.getValue13())
             .measureDatetime(entity.getMeasureDatetime())
+            .minData(entity.getMinData())
+            .avgData(entity.getAvgData())
+            .maxData(entity.getMaxData())
             .build();
+  }
+  // EntityList To DTOList
+  public static List<SensorDTO> entityListToDTOList(List<SensorEntity> entityList) {
+    List<SensorDTO> dtoList = new ArrayList<>();
+    for(SensorEntity entity : entityList) {
+      dtoList.add(entityToDTO(entity));
+    }
+    return dtoList;
   }
 
 }

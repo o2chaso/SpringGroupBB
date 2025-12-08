@@ -42,12 +42,12 @@ dependencies {
     implementation ("nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect:3.4.0")
     implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
 
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+
     implementation("org.springframework:spring-context-support")
     implementation("org.springframework.boot:spring-boot-starter-mail")
 
-    // 날씨API 시작
     implementation("com.google.code.gson:gson:2.10.1")
-    // 날씨API 끝
 
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'

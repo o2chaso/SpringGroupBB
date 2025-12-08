@@ -22,11 +22,21 @@
         background-color: #0056b3;
     }
 
+    body {
+        width: 780px;
+        height: 880px;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
     #contentArea {
-        margin-top: 20px;
-        padding: 15px;
-        border: 1px solid #ddd;
-        border-radius: 6px;
+        width: 740px;
+        min-height: 700px;
+    }
+
+    #chart {
+        width: 700px !important;
+        height: 350px !important;
     }
   </style>
 </head>
@@ -120,6 +130,7 @@
           pointRadius: 0          // point 지우기
         },
         {
+          label: "Sensor Alarm", // 센서 값 라벨
           data: [],               // 실시간 센서 값이 들어갈 배열
           borderColor: "red",     // Line Color
           tension: 0.1,           // Line 부드럽게 표현
@@ -208,10 +219,7 @@
           },
           y: {
             display: true,
-            afterDataLimits: function(scale) {
-              scale.max = scale.max + 5;
-              scale.min = scale.min -5;
-            }
+            grace: 20
           }
         }
       },
@@ -225,23 +233,104 @@
     var ctx = document.getElementById('chart').getContext('2d');
     var myChart = new Chart(ctx, config);
 
-    // SSE 연결
-    var eventSource = new EventSource("/sensor/sensorList/sse");
+    // 센서 꺼짐 처리
+    var offCheck = setInterval(function() {
+      var th = thresholdMap[deviceCodeValue + "_" + sensorKeyValue];
+      if(th && th.status == 0) {
+        document.getElementById("chart").style.display = "none";
+        document.getElementById("offMessage").style.display = "block";
+        eventSource.close();
+        clearInterval(offCheck);
+      }
+    });
+
     var thresholdMap = {};  // 임계치 정보를 저장할 Map
     var firstLoaded = false;
 
-    eventSource.onmessage = function(event) {
+    function connectSSE() {
+      // SSE 연결
+      var eventSource = new EventSource("/sensor/sensorList/sse");
+
+      // 센서 꺼짐 처리
+      var offCheck = setInterval(function() {
+        var th = thresholdMap[deviceCodeValue + "_" + sensorKeyValue];
+        if(th && th.status == 0) {
+          document.getElementById("chart").style.display = "none";
+          document.getElementById("offMessage").style.display = "block";
+          eventSource.close();
+          clearInterval(offCheck);
+        }
+      });
+
+      eventSource.onmessage = function(event) {
+
+        var jsonData = JSON.parse(event.data);
+        var sensorList = jsonData.sensor;
+        var thresholdList = jsonData.threshold;
+
+        // thresholdMap 생성
+        for(var i = 0; i < thresholdList.length; i++) {
+          var th = thresholdList[i];
+          thresholdMap[th.deviceCode + "_" + th.sensorKey] = th;
+        }
+
+        // 현재 디바이스 센서 찾기
+        var target = null;
+        for(var i = 0; i < sensorList.length; i++) {
+          if(sensorList[i].deviceCode === deviceCodeValue) {
+            target = sensorList[i];
+            break;
+          }
+        }
+        if(target == null) return;
+
+        var value = target[sensorKeyValue];
+        if(value == null) return;
+
+        var key = deviceCodeValue + "_" + sensorKeyValue;
+        var threshold = thresholdMap[key];
+
+        var alarmValue = threshold ? threshold.alarm : null;
+        var warningValue = threshold ? threshold.warning : null;
+
+        myChart.options.plugins.bgColorPlugin.alarm = alarmValue;
+        myChart.options.plugins.bgColorPlugin.warning = warningValue;
+
+        var now = new Date();
+        var year  = now.getFullYear();
+        var month = String(now.getMonth() + 1).padStart(2, "0");
+        var day   = String(now.getDate()).padStart(2, "0");
+        var hour  = String(now.getHours()).padStart(2, "0");
+        var min   = String(now.getMinutes()).padStart(2, "0");
+
+        var time = year + "-" + month + "-" + day + " " + hour + ":" + min;
+
+        data.labels.push(time);
+        data.datasets[0].data.push(value);
+        data.datasets[1].data.push(alarmValue);
+        data.datasets[2].data.push(warningValue);
+
+        if(data.labels.length > 50) {
+          data.labels.shift();
+          data.datasets[0].data.shift();
+          data.datasets[1].data.shift();
+          data.datasets[2].data.shift();
+        }
+
+        if(myChart != null) myChart.update();
+      };
+    }
+
+    // SSE 연결은 초기 20건 로드가 끝난 뒤 실행
+    eventSource_firstLoad = true;
+
+    // SSE 최초 메시지 진입
+    var eventSource_first = new EventSource("/sensor/sensorList/sse");
+    eventSource_first.onmessage = function(event) {
+
       var jsonData = JSON.parse(event.data);
       var sensorList = jsonData.sensor;
-      var thresholdList = jsonData.threshold;
 
-      // thresholdList를 Map으로 변환 (deviceCode + sensorKey 조합 기준)
-      for(var i = 0; i < thresholdList.length; i++) {
-        var th = thresholdList[i];
-        thresholdMap[th.deviceCode + "_" + th.sensorKey] = th;
-      }
-
-      // 현재 선택된 장치(deviceCode)의 센서 찾기
       var target = null;
       for(var i = 0; i < sensorList.length; i++) {
         if(sensorList[i].deviceCode === deviceCodeValue) {
@@ -255,7 +344,7 @@
 
       if(firstLoaded == false) {
         firstLoaded = true;
-        // 초기 20건 불러오기
+
         $.ajax({
           url: "/sensor/sensorPopup/history",
           type: "get",
@@ -265,87 +354,42 @@
             nowTime: nowTime
           },
           success: function(list) {
+
             for(var i = 0; i < list.length; i++) {
               var entity = list[i];
 
-              // 동적 필드 접근 (value1~value13)
               var pastValue = entity[sensorKeyValue];
               if(pastValue == null) continue;
 
-              // 임계값
-              var thKey = entity.deviceCode + "_" + sensorKeyValue;
+              var alarmValue = entity.threshold ? entity.threshold.alarm : null;
+              var warningValue = entity.threshold ? entity.threshold.warning : null;
 
-              var alarmValue = null;
-              var warningValue = null;
-
-              if(entity.threshold) {
-                alarmValue = entity.threshold.alarm;
-                warningValue = entity.threshold.warning;
-              }
-
-              // 시간 라벨 (DB에 저장된 measureDatetime 기준)
               var dateObj = entity.measureDatetime;
               var timeLabel = dateObj.substring(0, 10) + " " + dateObj.substring(11, 16);
 
               data.labels.push(timeLabel);
-              data.datasets[0].data.push(pastValue);      // 센서값
-              data.datasets[1].data.push(alarmValue);     // Alarm
-              data.datasets[2].data.push(warningValue);   // Warning
+              data.datasets[0].data.push(pastValue);
+              data.datasets[1].data.push(alarmValue);
+              data.datasets[2].data.push(warningValue);
             }
+
             if(myChart != null) myChart.update();
+
+            // 이제 진짜 SSE 연결 시작
+            connectSSE();
+
+            // 초기용 SSE 종료
+            eventSource_first.close();
           }
         });
       }
-      // SensorKey에 해당하는 값만 가져오기
-      var value = target[sensorKeyValue];
-      if(value == null) return;
-
-      // Alarm, warning 값 가져오기
-      var key = deviceCodeValue + "_" + sensorKeyValue;
-      var threshold = thresholdMap[key];
-
-      // 임계치 값이 설정되지 않았다면 null(그래프에 선이 안 그려지도록)
-      var alarmValue = threshold ? threshold.alarm: null;
-      var warningValue = threshold ? threshold.warning: null;
-
-      myChart.options.plugins.bgColorPlugin.alarm = alarmValue;
-      myChart.options.plugins.bgColorPlugin.warning = warningValue;
-
-      // 시간 라벨 생성
-      var now = new Date();
-
-      // yyyy-mm-dd
-      var year  = now.getFullYear();
-      var month = String(now.getMonth() + 1).padStart(2, "0");
-      var day   = String(now.getDate()).padStart(2, "0");
-
-      // hh:mm
-      var hour = String(now.getHours()).padStart(2, "0");
-      var min  = String(now.getMinutes()).padStart(2, "0");
-
-      // 최종 라벨
-      var time = year + "-" + month + "-" + day + " " + hour + ":" + min;
-
-      // 그래프 데이터 추가
-      data.labels.push(time);
-      data.datasets[0].data.push(value);        // 센서값
-      data.datasets[1].data.push(alarmValue);   // 알람 임계치
-      data.datasets[2].data.push(warningValue); // 경고 임계치
-
-      // 그래프 데이터 너무 많아지면 앞에서 삭제(50개 유지)
-      if(data.labels.length > 50) {
-        data.labels.shift();
-        data.datasets[0].data.shift();
-        data.datasets[1].data.shift();
-        data.datasets[2].data.shift();
-      }
-      // 업데이트
-      if(myChart == null) return; // 차트가 준비 안되었으면 무시
-      myChart.update();
-    }
+    };
   }
 
   // EventLog ========================================================================
+  var currentPage = 0;
+  var pageSize = 20;
+
   function initEventLog() {
     var deviceCode = [[${deviceCode}]];
     var sensorKey = [[${sensorKey}]];
@@ -356,26 +400,61 @@
       type: "get",
       data: {
         deviceCode: deviceCode,
-        sensorKey: sensorKey
+        sensorKey: sensorKey,
+        page: currentPage,
+        size: pageSize
       },
-      success: function(list) {
+      success: function(res) {
+
+        var list = res.data;
+        var total = res.totalCount;
+
         var html = "";
 
         for(var i=0; i<list.length; i++) {
           var log = list[i];
 
           html += "<tr>"
-                + "<td>" + (i+1) + "</td>"
+                + "<td>" + ((currentPage * pageSize) + (i+1)) + "</td>"
                 + "<td>" + sensorName + "</td>"
                 + "<td>" + log.value + "</td>"
                 + "<td>" + log.event + "</td>"
                 + "<td>" + log.measureDatetime + "</td>"
                 + "</tr>";
         }
+
         $("#logTable").html(html);
+
+        makePagination(total);
       }
     });
   }
+
+  // 페이지 버튼
+  function goPage(page) {
+    currentPage = page;
+    initEventLog();
+  }
+
+  function makePagination(total) {
+    var totalPages = Math.ceil(total / pageSize);
+    var html = "";
+    for(var i=0; i<totalPages; i++) {
+      html += "<button onclick='goPage(" + i + ")'>" + (i+1) + "</button>";
+    }
+    $("#paginationArea1").html(html);
+    $("#paginationArea2").html(html);
+  }
+
+
+  // 창 고정
+  window.onload = function() {
+    window.resizeTo(800, 700);
+  };
+
+  window.onresize = function() {
+      window.resizeTo(800, 700);
+  };
 </script>
 
 </body>

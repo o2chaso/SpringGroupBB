@@ -1,14 +1,10 @@
 package com.example.SpringGroupBB.common;
 
 import com.example.SpringGroupBB.constant.Progress;
+import com.example.SpringGroupBB.dto.LoginHistoryDTO;
 import com.example.SpringGroupBB.dto.PageDTO;
-import com.example.SpringGroupBB.entity.Board;
-import com.example.SpringGroupBB.entity.Member;
-import com.example.SpringGroupBB.entity.QnA;
-import com.example.SpringGroupBB.repository.BoardReplyRepository;
-import com.example.SpringGroupBB.repository.BoardRepository;
-import com.example.SpringGroupBB.repository.MemberRepository;
-import com.example.SpringGroupBB.repository.QnARepository;
+import com.example.SpringGroupBB.entity.*;
+import com.example.SpringGroupBB.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -27,6 +23,8 @@ public class Pagination {
   private final QnARepository qnaRepository;
   private final MemberRepository memberRepository;
   private final BoardRepository boardRepository;
+  private final ProductRepository productRepository;
+  private final LoginHistoryRepository loginHistoryRepository;
 
   public PageDTO pagination(PageDTO dto) {	// 각각의 변수로 받으면 초기값처리를 spring이 자동할수 있으나, 객체로 받으면 개별 문자/객체 자료에는 null이 들어오기에 따로 초기화 작업처리해야함.
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -38,9 +36,37 @@ public class Pagination {
     int totRecCnt = 0, totPage = 0;
 
     PageRequest pageable = PageRequest.of(pag, pageSize, Sort.by("id").descending());
+
+    if(dto.getSection().equals("member")) {
+      Page<Member> page;
+      if(dto.getSearch() != null && !dto.getSearch().isEmpty()) {
+        if(dto.getSearch().equals("email")) page = memberRepository.findByEmailContaining(dto.getSearchString(), pageable);
+        else page = memberRepository.findByNameContaining(dto.getSearchString(), pageable);
+      }
+      else page = memberRepository.findAll(pageable);
+
+      dto.setMemberList(page.getContent());
+      totRecCnt = (int) page.getTotalElements();
+      totPage = page.getTotalPages();
+
+    }
+    else if(dto.getSection().equals("product")) {
+      Page<Product> page;
+
+      if(dto.getSearch() != null && !dto.getSearch().isEmpty()) {
+        if(dto.getSearch().equals("sensorName")) page = productRepository.findBySensorNameContaining(dto.getSearchString(), pageable);
+        else page = productRepository.findByManufacturerContaining(dto.getSearchString(), pageable);
+      }
+      else page = productRepository.findAll(pageable);
+      dto.setProductList(page.getContent());
+
+      totRecCnt = (int) page.getTotalElements();
+      totPage = page.getTotalPages();
+    }
+
+    pageable = PageRequest.of(pag, pageSize, Sort.by(Sort.Order.desc("noticeSw"), Sort.Order.desc("id")));
     if(dto.getSection().equals("board")) {
       Page<Board> page;
-
       if (dto.getSearch() != null && !dto.getSearch().isEmpty()) {
         if(dto.getSearch().equals("title")) page = boardRepository.findByTitleContaining(dto.getSearchString(), pageable);
         else if(dto.getSearch().equals("name")) page = boardRepository.findByNameContaining(dto.getSearchString(), pageable);
@@ -115,7 +141,7 @@ public class Pagination {
       Page<QnA> page;
       // 문의 현황별로 검색.
       if(progress != null) page = qnaRepository.findByProgress(progress, pageable);
-      // 답변(ANSWER)을 제외한 문의 목록 검색.
+        // 답변(ANSWER)을 제외한 문의 목록 검색.
       else page = qnaRepository.findAllByProgressNot(Progress.ANSWER, pageable);
 
       // Page객체 List객체로 변환.
@@ -154,11 +180,40 @@ public class Pagination {
       totRecCnt = (int) page.getTotalElements();
       totPage = page.getTotalPages();
     }
+    else if(dto.getSection().equals("History")) {
+      pageable = PageRequest.of(pag, pageSize, Sort.by("id").descending());
+
+      LocalDateTime startDateTime = dto.getStartDate() != null ? dto.getStartDate().atStartOfDay() : null;
+      LocalDateTime endDateTime = dto.getEndDate() != null ? dto.getEndDate().atTime(23, 59, 59) : null;
+      Page<LoginHistory> page;
+      switch (dto.getSearchStr() != null ? dto.getSearchStr() : "") {
+        case "name":
+          page = (startDateTime != null && endDateTime != null)
+                  ? loginHistoryRepository.findByMember_NameContainingAndCreateDateBetween(dto.getSearchString(), startDateTime, endDateTime, pageable)
+                  : loginHistoryRepository.findByMember_NameContaining(dto.getSearchString(), pageable);
+          break;
+
+        case "email":
+          page = (startDateTime != null && endDateTime != null)
+                  ? loginHistoryRepository.findByMember_EmailContainingAndCreateDateBetween(dto.getSearchString(), startDateTime, endDateTime, pageable)
+                  : loginHistoryRepository.findByMember_EmailContaining(dto.getSearchString(), pageable);
+          break;
+
+        default:
+          page = (startDateTime != null && endDateTime != null)
+                  ? loginHistoryRepository.findByCreateDateBetween(startDateTime, endDateTime, pageable)
+                  : loginHistoryRepository.findAll(pageable);
+          break;
+      }
+      dto.setLoginHistoryList(page.map(LoginHistoryDTO::entityToDto).getContent());
+      totRecCnt = (int) page.getTotalElements();
+      totPage = page.getTotalPages();
+    }
 
     int startIndexNo = pag * pageSize;
-		int curScrStartNo = totRecCnt - startIndexNo;
-		
-		int blockSize = 3;
+    int curScrStartNo = totRecCnt - startIndexNo;
+
+    int blockSize = 3;
     int curBlock = ((pag + 1) - 1) / blockSize;
     int lastBlock = (totPage - 1) / blockSize;
     dto.setPag(pag+1);
@@ -171,17 +226,17 @@ public class Pagination {
     dto.setCurBlock(curBlock);
     dto.setLastBlock(lastBlock);
 
-		if(dto.getSearch() != null) {
-			if(dto.getSearch().equals("title")) dto.setSearch("글제목");
-			else if(dto.getSearch().equals("name")) dto.setSearch("글쓴이");
-			else if(dto.getSearch().equals("content")) dto.setSearch("글내용");
-		}
-		dto.setSearch(dto.getSearch());
-		dto.setSearchStr(dto.getSearchStr());
-		
-		dto.setPart(part);
-		dto.setBoardFlag(dto.getBoardFlag());
-		
-		return dto;
-	}
+    if(dto.getSearch() != null) {
+      if(dto.getSearch().equals("title")) dto.setSearch("글제목");
+      else if(dto.getSearch().equals("name")) dto.setSearch("글쓴이");
+      else if(dto.getSearch().equals("content")) dto.setSearch("글내용");
+    }
+    dto.setSearch(dto.getSearch());
+    dto.setSearchStr(dto.getSearchStr());
+
+    dto.setPart(part);
+    dto.setBoardFlag(dto.getBoardFlag());
+
+    return dto;
+  }
 }

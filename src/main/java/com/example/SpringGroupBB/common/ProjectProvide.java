@@ -9,6 +9,10 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
 
 //@Component
 @Service
@@ -50,4 +54,13 @@ public class ProjectProvide {
 	}
 
 
+  public void writeFile(MultipartFile sFile, String sFileName, String realPath) throws IOException {
+    FileOutputStream fos = new FileOutputStream(realPath + sFileName);
+
+    if(sFile.getBytes().length != -1) {
+      fos.write(sFile.getBytes());
+    }
+    fos.flush();
+    fos.close();
+  }
 }

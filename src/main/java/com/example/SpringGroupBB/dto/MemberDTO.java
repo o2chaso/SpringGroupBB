@@ -5,8 +5,6 @@ import com.example.SpringGroupBB.constant.UserDel;
 import com.example.SpringGroupBB.entity.Member;
 import com.example.SpringGroupBB.validation.CreateGroup;
 import com.example.SpringGroupBB.validation.UpdateGroup;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
@@ -16,7 +14,6 @@ import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Getter
 @Setter
@@ -25,8 +22,6 @@ import java.util.Optional;
 @AllArgsConstructor
 @Builder
 public class MemberDTO {
-
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
 
   private Long id;
 
@@ -51,13 +46,14 @@ public class MemberDTO {
   private String tel;
 
   private String address;
+
   @DateTimeFormat(pattern = "yyyy-MM-dd")
   private LocalDate birthday;
+  private String profileImage;
   private LocalDateTime wDate;
   private Role role;
   private UserDel userDel;
-
-
+  private LocalDateTime delDate;
 
   private String tel2;
   private String tel3;
@@ -67,18 +63,26 @@ public class MemberDTO {
   private String detailAddress;
   private String extraAddress;
 
-  public static MemberDTO entityToDto(Optional<Member> opMember) {
+  public static MemberDTO entityToDto(Member member) {
     return MemberDTO.builder()
-            .id(opMember.get().getId())
-            .email(opMember.get().getEmail())
-            .password(opMember.get().getPassword())
-            .name(opMember.get().getName())
-            .tel(opMember.get().getTel())
-            .address(opMember.get().getAddress())
-            .birthday(opMember.get().getBirthday())
-            .wDate(opMember.get().getWDate())
-            .role(opMember.get().getRole())
-            .userDel(opMember.get().getUserDel())
+            .id(member.getId())
+            .email(member.getEmail())
+            .password(member.getPassword())
+            .name(member.getName())
+            .tel(member.getTel())
+            .address(member.getAddress())
+            .birthday(member.getBirthday())
+            .profileImage(member.getProfileImage())
+            .wDate(member.getWDate())
+            .role(member.getRole())
+            .userDel(member.getUserDel())
+            .delDate(member.getDelDate())
             .build();
+  }
+
+  public MemberDTO(Long id, String email, String name) {
+    this.id = id;
+    this.email = email;
+    this.name = name;
   }
 }

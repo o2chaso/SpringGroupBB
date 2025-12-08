@@ -5,13 +5,23 @@
 
 <th:block layout:fragment="script">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script th:inline="javascript">
+    // Global 변수
+    let dataChart = null;
+    let resData = null;
+
+    // Graph Zoom Reset
+    function resetZoom() {
+      if(dataChart) {
+        dataChart.resetZoom();
+      }
+    }
+
     window.addEventListener("load", function() {
       window.CSRF_TOKEN = /*[[${_csrf.token}]]*/ "";
       window.CSRF_HEADER = /*[[${_csrf.headerName}]]*/ "";
-
-      // 차트 전역 변수
-      let dataChart = null;
 
       document.getElementById("btnSearch").addEventListener("click", function() {
         var startDate = document.getElementById("startDate").value;
@@ -23,6 +33,9 @@
           alert("시작 및 종료 날짜를 선택하세요");
           return;
         }
+
+        startDate = startDate.replace("T", " ");
+        endDate = endDate.replace("T", " ");
 
         $.ajax({
           url : "/sensor/sensorSearch",
@@ -39,13 +52,14 @@
             sensorKey: sensorKey
           },
           success: function(res) {
+            resData = res;
             let labels = [];
             let values = [];
             let alarms = [];
             let warnings = [];
             for(let i = 0; i < res.length; i++) {
               const e = res[i];
-              labels.push(e.measureDatetime.substring(11, 19));
+              labels.push(e.measureDatetime.substring(0, 10) + " " + e.measureDatetime.substring(11, 16));
               values.push(e[sensorKey]);
               if(e.threshold != null) {
                 alarms.push(e.threshold.alarm);
@@ -57,8 +71,8 @@
               }
               document.getElementById("chartTable").innerText = deviceCode + ": " + getSensorName(sensorKey);
             }
-            // SensorName Mapping
 
+            // SensorName Mapping
             function getSensorName(key) {
               switch(key) {
                 case "value1": return "실내온도";
@@ -78,6 +92,7 @@
               }
             }
             // Graph ========================================================================
+            // x축 날짜를 '문자'로 세틸해서 pan 사용 불가...
             var ctx = document.getElementById('dataChart').getContext('2d');
 
             // 이미 있는 차트면 삭제
@@ -167,6 +182,17 @@
                     alarm: alarms[0],
                     warning: warnings[0]
                   },
+                  zoom: {
+                    zoom: {
+                      wheel: {
+                        enabled: true
+                      },
+                      pinch: {
+                        enabled: true
+                      },
+                      mode: 'x'
+                    }
+                  },
                   legend: {
                     position: 'top',
                   }
@@ -207,6 +233,88 @@
       document.getElementById("endDate").value = today;
     });
 
+    // Graph Print
+    function printPage() {
+      var canvas = document.getElementById("dataChart");
+      var imgData = canvas.toDataURL("image/png");
+      // 새 창 열기
+      var win = window.open("", "PRINT", "height=800,width=1000");
+      // 이미지 작성
+      win.document.write("<html><head><title>그래프 출력</title>");
+      win.document.write("</head><body>");
+      win.document.write("<h3>그래프 출력</h3>");
+      win.document.write("<img src='" + imgData + "' style='max-width:100%;'/>");
+      win.document.write("</body></html>");
+      win.document.close();  // DOM 닫기
+      // 로드 후 출력하기
+      win.onload = function() {
+        win.focus();
+        win.print();
+        win.close();
+      };
+    }
+
+    // 현재 날짜 시간 기본값 넣기
+    window.addEventListener("load", function() {
+      var now = new Date();
+
+      var year = now.getFullYear();
+      var month = ("0" + (now.getMonth() + 1)).slice(-2);
+      var day = ("0" + now.getDate()).slice(-2);
+      var hour = ("0" + now.getHours()).slice(-2);
+      var minute = ("0" + now.getMinutes()).slice(-2);
+
+      var local = year + "-" + month + "-" + day + "T" + hour + ":" + minute;
+
+      document.getElementById("startDate").value = local;
+      document.getElementById("endDate").value = local;
+    });
+
+    // 선택층 + 전체 센서 다운
+    function download() {
+      if(resData === null) {
+        alert("자료 조회 후 시도해주세요.");
+        return;
+      }
+      const data = resData;
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "SheetJS");
+      XLSX.writeFile(wb, "sensor_detail_data.xlsx");
+    }
+
+    // 선택층 + 선택 센서 다운
+    function selectDownload() {
+      if(resData === null) {
+        alert("자료 조회 후 시도해주세요.");
+        return;
+      }
+      const deviceCode = document.getElementById("deviceCode").value;
+      const sensorKey = document.getElementById("sensorKey").value;
+
+      var filter = [];
+      for(var i = 0; i < resData.length; i++) {
+        var e = resData[i];
+        if(e.deviceCode === deviceCode) {
+          var obj = {};
+          obj.companyId = e.companyId;
+          obj.id = e.id;
+          obj.deviceCode = e.deviceCode;
+          obj[sensorKey] = e[sensorKey];
+          obj.measureDatetime = e.measureDatetime;
+          filter.push(obj);
+        }
+      }
+
+      if(filter.length === 0) {
+        alert("데이터가 없습니다.");
+        return;
+      }
+      var ws = XLSX.utils.json_to_sheet(filter);
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "선택센서");
+      XLSX.writeFile(wb, "sensor_detail_data.xlsx");
+    }
   </script>
 </th:block>
 
@@ -219,11 +327,11 @@
         <h5 class="fw-bold mb-3">센서 데이터 조회</h5>
         <div class="mb-3">
           <label>시작 날짜</label><br/>
-          <input type="date" max="9999-12-31" id="startDate" name="startDate" class="form-control">
+          <input type="datetime-local" max="9999-12-31T23:59" step="60" id="startDate" name="startDate" class="form-control">
         </div>
         <div class="mb-3">
           <label>종료 날짜</label>
-          <input type="date" max="9999-12-31" id="endDate" name="startDate" class="form-control">
+          <input type="datetime-local" max="9999-12-31T23:59" id="endDate" name="startDate" class="form-control">
         </div>
         <div class="mb-3">
         <label>장비 선택</label>
@@ -253,9 +361,14 @@
           </select>
         </div>
         <button id="btnSearch" class="btn btn-primary btn-sm">조회</button>
+        <button onclick="resetZoom()" class="btn btn-primary btn-sm">Graph Reset</button>
         <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
         <div class="mt-3">
           <a href="/sensor/sensorList" class="btn btn-secondary btn-sm mt-1 mb-3">대시보드</a>
+          <input type="button" value="인쇄" onclick="printPage()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
+          <input type="button" value="다운로드1" onclick="download()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
+          <input type="button" value="다운로드2" onclick="selectDownload()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
+          <input type="button" value="다운로드3" onclick="allDownload()" class="btn btn-secondary btn-sm mt-1 mb-3"/>
         </div>
       </div>
 

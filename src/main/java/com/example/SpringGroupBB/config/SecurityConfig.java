@@ -1,6 +1,9 @@
 package com.example.SpringGroupBB.config;
 
 
+import com.example.SpringGroupBB.handler.CustomFailureHandler;
+import com.example.SpringGroupBB.service.KakaoOAuth2UserService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -15,7 +18,10 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+  private final KakaoOAuth2UserService kakaoOAuth2UserService;
+  private final CustomFailureHandler CustomFailureHandler;
 
   @Bean
   public SecurityFilterChain filterChain(HttpSecurity security) throws Exception {
@@ -39,22 +45,32 @@ public class SecurityConfig {
              */
 
             .formLogin(form -> form
-            .loginPage("/member/memberLogin") // 커스텀 로그인 페이지
-            .defaultSuccessUrl("/member/memberLoginOk", true)  // 로그인 성공 시 이동
-            .failureUrl("/member/login/error")  // 실패 시 이동
-            .usernameParameter("email") // 로그인 form의 name="email"
-            .permitAll());
+              .loginPage("/member/memberLogin") // 커스텀 로그인 페이지
+              .defaultSuccessUrl("/member/memberLoginOk", true)  // 로그인 성공 시 이동
+              .failureUrl("/member/login/error")  // 실패 시 이동
+              .usernameParameter("email") // 로그인 form의 name="email"
+              .permitAll())
+
+            .oauth2Login(oauth -> oauth
+              .userInfoEndpoint(userInfo -> userInfo
+                      .userService(kakaoOAuth2UserService)
+              )
+              .defaultSuccessUrl("/member/memberLoginOk", true)
+              .failureHandler(CustomFailureHandler)
+            );
 
     // 페이지 접근 권한설정
     security.authorizeHttpRequests(request -> request
-            .requestMatchers("/", "/images/**", "/weather/**", "/css/**", "/ckeditor/**", "/ckeditorUpload/**", "/js/**").permitAll()
-            .requestMatchers("/member/memberEmailCheck", "/member/memberEmailCheckOk", "/member/memberEmailCheckNo").permitAll()
+            .requestMatchers("/", "/images/**", "/css/**", "/ckeditor/**", "/ckeditorUpload/**", "/js/**").permitAll()
+            //.requestMatchers("/member/memberProfileUpdate").hasAnyAuthority("USER", "ADMIN")
             .requestMatchers("/member/memberJoin", "/member/memberLogin", "/member/login/error", "/member/memberLoginOk").permitAll()
-            .requestMatchers("/board/**", "/member/memberPasswordChange", "/member/memberProfileUpdate","/member/memberDelete").authenticated()
-            .requestMatchers("/member/memberDelete").hasAnyAuthority("USER", "ADMIN")
-            .requestMatchers("/sensor/**", "/sensor/sensorList/sse", "/sensor/history").permitAll()
-            .requestMatchers("/member/memberJoin", "/member/memberLogin", "/member/login/error").permitAll()
+            .requestMatchers("/guest/**", "/board/List", "/board/boardContent", "/member/kakaoLogin", "/member/kakaoJoin").permitAll()
+            .requestMatchers("/member/kakaoLogout","/member/memberMidFind", "/member/memberPwdFind", "/member/memberMidFindResult", "/member/memberPwdFindResult").permitAll()
+            .requestMatchers("/member/memberEmailCheck", "/member/memberEmailCheckOk", "/member/memberEmailCheckNo", "/member/memberPwdChange").permitAll()
+            .requestMatchers("/member/memberPasswordChange", "/member/memberProfileUpdate","/member/memberDelete").authenticated()
+            .requestMatchers("/board/replyInput", "/board/replyDelete", "/member/memberDelete").hasAnyAuthority("USER", "ADMIN")
             .requestMatchers("/member/memberMain").authenticated()
+            .requestMatchers("/admin/**").hasRole("ADMIN")
             .anyRequest().authenticated());
 
     // 기본 로그아웃 처리

@@ -7,6 +7,8 @@ import jakarta.validation.constraints.NotEmpty;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 @Getter
@@ -37,6 +39,8 @@ public class BoardDTO {
 
   private String openSw;
 
+  private String noticeSw;
+
   private int readNum;
 
   private LocalDateTime wDate;
@@ -55,10 +59,19 @@ public class BoardDTO {
             .content(opBoard.get().getContent())
             .hostIp(opBoard.get().getHostIp())
             .openSw(opBoard.get().getOpenSw())
+            .noticeSw(opBoard.get().getNoticeSw())
             .readNum(opBoard.get().getReadNum())
             .wDate(opBoard.get().getWDate())
             .good(opBoard.get().getGood())
             .complaint(opBoard.get().getComplaint())
             .build();
+  }
+
+  public static List<BoardDTO> entityListToDTOList(List<Board> boardList) {
+    List<BoardDTO> boardDTOList = new ArrayList<>();
+    for(Board board : boardList) {
+      boardDTOList.add(entityToDto(Optional.ofNullable(board)));
+    }
+    return boardDTOList;
   }
 }

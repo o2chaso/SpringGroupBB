@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <title></title>
+  <th:block th:insert="~{include/bs5}"></th:block>
+</head>
+<body>
+<div class="container text-center">
+  <p><br/></p>
+  <h2 class="text-center mb-4">글 내용 보기</h2>
+  <th:block th:if="${board.complaint == 'HI'}">
+    <hr class="border border-dark">
+    <h3 class="text-center text-danger">해당 게시글은 신고된 글입니다.</h3>
+    <hr class="border border-dark">
+    <div class="text-center"><input type="button" value="돌아가기"
+                                    onclick="location.href='boardList?pag=${pag}&pageSize=${pageSize}&search=${search}&searchString=${searchString}'"
+                                    class="btn btn-info"/></div>
+  </th:block>
+  <th:block th:if="${board.complaint != 'HI'}">
+    <table class="table table-bordered text-center border-secondary-subtle">
+      <tr>
+        <th class="table-secondary">글쓴이</th>
+        <td>[[${board.name}]]</td>
+        <th class="table-secondary">글쓴날짜</th>
+        <td>[[${#strings.substring(board.wDate,0,19)}]]</td>
+      </tr>
+      <tr>
+        <th class="table-secondary">글조회수</th>
+        <td>[[${board.readNum}]]</td>
+        <th class="table-secondary">접속IP</th>
+        <td>[[${board.hostIp}]]</td>
+      </tr>
+      <tr>
+        <th class="table-secondary">글제목</th>
+        <td colspan="3" class="text-start">[[${board.title}]]
+          (<a th:href="|javascript:goodCheck()|" title="좋아요">❤</a>([[${board.good}]]))
+          (<a th:href="|javascript:goodCheckPlus(1)|" title="좋아요">👍</a>
+          <a th:href="|javascript:goodCheckMinus(-1)|" title="싫어요">👎</a>([[${board.good}]]))
+        </td>
+      </tr>
+      <tr>
+        <th class="table-secondary">글내용</th>
+        <td colspan="3" style="height:250px" class="text-start" th:utext="${board.content}"></td>
+      </tr>
+    </table>
+  </th:block>
+  <hr/>
+
+  <!-- 댓글 리스트 -->
+  <table class="table table-hover text-center">
+    <tr class="table-secondary">
+      <th>작성자</th>
+      <th>댓글내용</th>
+      <th>댓글일자</th>
+      <th>접속IP</th>
+    </tr>
+    <th:block th:if="${!#lists.isEmpty(replyList)}">
+      <th:block th:each="reply : ${replyList}">
+        <tr>
+          <td>[[${reply.name}]]</td>
+          <td class="text-start" th:utext="${reply.content}" style="white-space: pre-line;"></td>
+          <td th:text="${#strings.substring(reply.wDate, 0, 10)}"></td>
+          <td th:text="${reply.hostIp}"></td>
+        </tr>
+      </th:block>
+    </th:block>
+  </table>
+</div>
+</body>
+</html>

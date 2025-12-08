@@ -8,7 +8,6 @@
     let message = [[${message}]];
     if(message != null) alert(message);
 
-
     function fCheck() {
 
       let password = form.password.value;
@@ -21,9 +20,8 @@
       let ans = confirm("회원 탈퇴하시겠습니까?");
       if(!ans) return false;
 
-
       $.ajax({
-        url   : 'memberPwdCheck',
+        url   : 'memberDelete',
         data  : {password:password},
         type  : 'post',
         success : (res) => {
